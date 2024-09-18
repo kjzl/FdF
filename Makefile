@@ -6,7 +6,7 @@
 #    By: omed <omed@student.42.fr>                  +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2024/09/06 16:48:42 by omed              #+#    #+#              #
-#    Updated: 2024/09/06 17:06:14 by omed             ###   ########.fr        #
+#    Updated: 2024/09/14 19:39:37 by omed             ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -21,7 +21,7 @@ LIBMLXDIR := minilibx-linux
 LIBFT := $(LIBFTDIR)/libft.a
 LIBMLX := $(LIBMLXDIR)/libmlx_Linux.a
 #Sources
-SRCS := $(addprefix $(SRCDIR)/, main.c)
+SRCS := $(addprefix $(SRCDIR)/, main1.c)
 
 #Objects
 OBJS := $(addprefix $(OBJDIR)/, $(notdir $(SRCS:.c=.o)))

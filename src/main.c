@@ -6,7 +6,7 @@
 /*   By: omed <omed@student.42.fr>                  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/09/06 16:11:14 by omed              #+#    #+#             */
-/*   Updated: 2024/09/12 19:42:44 by omed             ###   ########.fr       */
+/*   Updated: 2024/09/13 14:19:41 by omed             ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,8 +14,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdarg.h>
 #include "../libft/libft.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #define ESC_KEY 65307
 #define IMG_WIDTH 1000
@@ -39,6 +45,7 @@ typedef struct  s_point {
     int x;
     int y;
 } t_point;
+
 
 void	my_mlx_pixel_put(t_data *data, int x, int y, int color)
 {
