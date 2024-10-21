@@ -23,7 +23,7 @@
 #endif
 
 #define ESC_KEY 65307
-#define WINDOW_WIDTH 1800   
+#define WINDOW_WIDTH 1800
 #define WINDOW_HEIGHT 1000
 
 // Keycodes for user input
@@ -58,6 +58,7 @@ typedef struct s_vars {
     void    *win;
     t_data  img;
     float   zoom;
+    float   zoom_step;
     float   angle;
     float   z_scale;
     int     shift_x;
@@ -184,7 +185,7 @@ int load_map(const char *filename, t_map *map)
     map->z_matrix = malloc(sizeof(int *) * map->height);
     if (!map->z_matrix)
         return (-1);
-    
+
     map->color_matrix = malloc(sizeof(int *) * map->height);
     if (!map->color_matrix)
         return (-1);
@@ -239,20 +240,40 @@ void free_map(t_map *map)
     free(map->color_matrix);
 }
 
+void rotate_point(t_point3d *point, float angle)
+{
+    float x_new;
+    float y_new;
+
+    x_new = point->x * cos(angle) - point->y * sin(angle);
+    y_new = point->x * sin(angle) + point->y * cos(angle);
+
+    point->x = x_new;
+    point->y = y_new;
+}
+
 // Isometric projection function
 void project_iso(t_point3d point, t_point2d *projected, t_vars *vars)
 {
-    float x;
+	float x;
     float y;
     float z;
 
-    x = point.x * vars->zoom;
-    y = point.y * vars->zoom;
-    z = point.z * vars->zoom / vars->z_scale;
+    // Apply zoom and z_scale
+    point.x *= vars->zoom;
+    point.y *= vars->zoom;
+    point.z *= vars->zoom / vars->z_scale;
+
+    // Rotate the point around the Z-axis
+    rotate_point(&point, vars->angle);
 
     // Isometric projection formulas
-    projected->x = (x - y) * cos(vars->angle) + vars->shift_x;
-    projected->y = (x + y) * sin(vars->angle) - z + vars->shift_y;
+    x = point.x;
+    y = point.y;
+    z = point.z;
+
+    projected->x = (x - y) * cos(M_PI / 6) + vars->shift_x;
+    projected->y = (x + y) * sin(M_PI / 6) - z + vars->shift_y;
 }
 
 // Line drawing function (Bresenham's Algorithm)
@@ -288,137 +309,168 @@ t_point2d rect_size(t_point2d max, t_point2d min)
 {
     t_point2d size;
 
-    printf("max.x: %d, max.y: %d, b.x: %d, b.y: %d\n", max.x, max.y, min.x, min.y);
     size.x = abs(max.x - min.x);
     size.y = abs(max.y - min.y);
-    printf("size.x: %d, size.y: %d\n", size.x, size.y);
     return (size);
 }
 
-t_point2d rect_offset_center(t_point2d big, t_point2d little)
+t_point2d rect_center_offset(t_point2d a, t_point2d b)
 {
     t_point2d offset;
 
-    // big = 1000 * 800
-    // little = 390 * 544
-    // offset = 305, 128
-    // eigentlich = 
-    offset.x = big.x / 2 - little.x / 2;
-    offset.y = big.y / 2 - little.y / 2;
-    printf("render offset.x: %d, offset.y: %d\n", offset.x, offset.y);
+    offset.x = a.x / 2 - b.x / 2;
+    offset.y = a.y / 2 - b.y / 2;
     return (offset);
 }
 
-t_point2d    calculate_img(t_map *map, t_vars *vars, t_point2d *offset)
+t_point2d	point_min(t_point2d a, t_point2d b)
 {
-    t_point3d point;
-    t_point2d projected_start, projected_end;
-    t_point2d max = {0};
-    t_point2d min = {INT_MAX, INT_MAX};
-    for (int y = 0; y < map->height; y++)
-    {
-        for (int x = 0; x < map->width; x++)
-        {
-            point.x = x;
-            point.y = y;
-            point.z = map->z_matrix[y][x];
+	t_point2d min;
 
-            project_iso(point, &projected_start, vars);
-            if (min.x > projected_start.x)
-                min.x = projected_start.x;
-            if (min.y > projected_start.y)
-                min.y = projected_start.y;
-            if (max.x < projected_start.x)
-                max.x = projected_start.x;
-            if (max.y < projected_start.y)
-                max.y = projected_start.y;
+	if (a.x < b.x)
+		min.x = a.x;
+	else
+		min.x = b.x;
 
-            if (x < map->width - 1)
-            {
-                t_point3d point_right = {x + 1, y, map->z_matrix[y][x + 1]};
-                project_iso(point_right, &projected_end, vars);
-            }
+	if (a.y < b.y)
+		min.y = a.y;
+	else
+		min.y = b.y;
 
-            if (y < map->height - 1)
-            {
-                t_point3d point_down = {x, y + 1, map->z_matrix[y + 1][x]};
-                project_iso(point_down, &projected_end, vars);
-            }
-            if (min.x > projected_end.x)
-                    min.x = projected_end.x;
-                if (min.y > projected_end.y)
-                    min.y = projected_end.y;
-                if (max.x < projected_end.x)
-                    max.x = projected_end.x;
-                if (max.y < projected_end.y)
-                    max.y = projected_end.y;
-        }
-    }
-    *offset = min;
-    return (rect_size(max, min));
+	return (min);
+}
+
+t_point2d	point_max(t_point2d a, t_point2d b)
+{
+	t_point2d max;
+
+	if (a.x > b.x)
+		max.x = a.x;
+	else
+		max.x = b.x;
+
+	if (a.y > b.y)
+		max.y = a.y;
+	else
+		max.y = b.y;
+
+	return (max);
 }
 
 t_point2d point_offset(t_point2d point, t_point2d offset)
 {
     t_point2d new_point;
 
-    new_point.x = point.x - offset.x;
-    new_point.y = point.y - offset.y;
+    new_point.x = point.x + offset.x;
+    new_point.y = point.y + offset.y;
     return (new_point);
+}
+
+t_point2d point_neg(t_point2d p)
+{
+	p.x = -p.x;
+	p.y = -p.y;
+	return (p);
+}
+
+/// returns the on-screen size of the resulting projection
+/// and the offset needed for the draw function to start drawing at x=0,y=0
+t_point2d    calculate_projection(t_map *map, t_vars *vars, t_point2d *offset_out)
+{
+	t_point3d	point;
+	int			x;
+	int			y;
+	t_point2d	projected;
+	t_point2d	max = {0};
+    t_point2d	min = {INT_MAX, INT_MAX};
+
+	x = 0;
+	y = 0;
+	while (y < map->height)
+	{
+		x = 0;
+		while (x < map->width)
+		{
+			point = (t_point3d){x, y, .z=map->z_matrix[y][x]};
+			project_iso(point, &projected, vars);
+			min = point_min(min, projected);
+			max = point_max(max, projected);
+			if (x < map->width - 1)
+			{
+				point = (t_point3d){x + 1, y, map->z_matrix[y][x + 1]};
+				project_iso(point, &projected, vars);
+				min = point_min(min, projected);
+				max = point_max(max, projected);
+			}
+			if (y < map->height - 1)
+			{
+				point = (t_point3d){x, y + 1, map->z_matrix[y + 1][x]};
+				project_iso(point, &projected, vars);
+				min = point_min(min, projected);
+				max = point_max(max, projected);
+			}
+			x++;
+		}
+		y++;
+	}
+	if (offset_out != NULL)
+    	*offset_out = point_neg(min);
+    return (rect_size(max, min));
 }
 
 // Function to draw the wireframe map
 void draw_map(t_data *img, t_map *map, t_vars *vars, t_point2d *offset)
 {
-    t_point3d point;
-    t_point2d projected_start, projected_end;
-    //int color = 0xFFFFFF; // White color for lines
+	t_point3d	point;
+	int			x;
+	int			y;
+	t_point2d	projected_start;
+	t_point2d	projected_end;
 
-    for (int y = 0; y < map->height; y++)
-    {
-        for (int x = 0; x < map->width; x++)
-        {
-            point.x = x;
-            point.y = y;
-            point.z = map->z_matrix[y][x];
-
-            project_iso(point, &projected_start, vars);
-            if (x < map->width - 1)
-            {
-                t_point3d point_right = {x + 1, y, map->z_matrix[y][x + 1]};
-                project_iso(point_right, &projected_end, vars);
-                draw_line_between_points(img, point_offset(projected_start, *offset), point_offset(projected_end, *offset), map->color_matrix[y][x]);
-            }
-
-            if (y < map->height - 1)
-            {
-                t_point3d point_down = {x, y + 1, map->z_matrix[y + 1][x]};
-                project_iso(point_down, &projected_end, vars);
-                draw_line_between_points(img, point_offset(projected_start, *offset), point_offset(projected_end, *offset), map->color_matrix[y][x]);
-            }
-        }
-    }
+	y = 0;
+	while (y < map->height)
+	{
+		x = 0;
+		while (x < map->width)
+		{
+			point = (t_point3d){x, y, .z=map->z_matrix[y][x]};
+			project_iso(point, &projected_start, vars);
+			projected_start = point_offset(projected_start, *offset);
+			if (x < map->width - 1)
+			{
+				point = (t_point3d){x + 1, y, map->z_matrix[y][x + 1]};
+				project_iso(point, &projected_end, vars);
+				draw_line_between_points(img, projected_start, point_offset(projected_end, *offset), map->color_matrix[y][x]);
+			}
+			if (y < map->height - 1)
+			{
+				point = (t_point3d){x, y + 1, map->z_matrix[y + 1][x]};
+				project_iso(point, &projected_end, vars);
+				draw_line_between_points(img, projected_start, point_offset(projected_end, *offset), map->color_matrix[y][x]);
+			}
+			x++;
+		}
+		y++;
+	}
 }
 
 void    render_screen(t_vars *vars)
 {
     t_point2d center_offset;
-    t_point2d img_size;
+    t_point2d content_size;
     t_point2d offset;
-    
+
      // Redraw the map with updated parameters
     mlx_clear_window(vars->mlx, vars->win);
     if (vars->img.img)
         mlx_destroy_image(vars->mlx, vars->img.img);
-    img_size = calculate_img(vars->map, vars, &offset);
-    vars->img.img = mlx_new_image(vars->mlx, img_size.x + 2, img_size.y + 2);
+    content_size = calculate_projection(vars->map, vars, &offset);
+    center_offset = rect_center_offset((t_point2d){WINDOW_WIDTH, WINDOW_HEIGHT}, content_size);
+    offset = point_offset(point_offset(center_offset, offset), (t_point2d){vars->shift_x, vars->shift_y});
+    vars->img.img = mlx_new_image(vars->mlx, WINDOW_WIDTH, WINDOW_HEIGHT);
     vars->img.addr = mlx_get_data_addr(vars->img.img, &vars->img.bits_per_pixel, &vars->img.line_length, &vars->img.endian);
-    printf("img_size.x: %d, img_size.y: %d\n", img_size.x, img_size.y);
-    // print offset
-    printf("offset.x: %d, offset.y: %d\n", offset.x, offset.y);
     draw_map(&vars->img, vars->map, vars, &offset); // Use vars->map
-    center_offset = rect_offset_center((t_point2d){WINDOW_WIDTH, WINDOW_HEIGHT}, img_size);
-    mlx_put_image_to_window(vars->mlx, vars->win, vars->img.img, center_offset.x + vars->shift_x, center_offset.y + vars->shift_y);
+    mlx_put_image_to_window(vars->mlx, vars->win, vars->img.img, 0, 0);
 }
 
 void    free_vars(t_vars *vars)
@@ -436,32 +488,32 @@ void    free_vars(t_vars *vars)
 // Key event handler
 int handle_key(int keycode, t_vars *vars)
 {
-    printf("key: %d", keycode);
+    printf("key: %d\n", keycode);
     if (keycode == KEY_ESC)
     {
         free_vars(vars);
         exit(0);
     }
-    else if (keycode == KEY_PLUS) // ist falsch ist
-        vars->zoom += 1;
+    else if (keycode == KEY_PLUS)
+        vars->zoom += vars->zoom_step;
     else if (keycode == KEY_MINUS)
-        vars->zoom -= 1;
-    else if (keycode == KEY_LEFT)
-        vars->shift_x -= 10;
+        vars->zoom -= vars->zoom_step;
     else if (keycode == KEY_RIGHT)
-        vars->shift_x += 10;
-    else if (keycode == KEY_UP)
-        vars->shift_y -= 10;
+        vars->shift_x -= vars->map->width / 10;
+    else if (keycode == KEY_LEFT)
+        vars->shift_x += vars->map->width / 10;
     else if (keycode == KEY_DOWN)
-        vars->shift_y += 10;
-    else if (keycode == 113) // 'q' key to rotate left
-        vars->angle -= 0.05;
-    else if (keycode == 101) // 'e' key to rotate right
-        vars->angle += 0.05;
+        vars->shift_y -= vars->map->height / 10;
+    else if (keycode == KEY_UP)
+        vars->shift_y += vars->map->height / 10;
+    else if (keycode == 113) // 'q' key to rotate left by 11,25 degrees
+        vars->angle -= M_PI / 16;
+    else if (keycode == 101) // 'e' key to rotate right by 11,25 degrees
+        vars->angle += M_PI / 16;
     else if (keycode == 97) // 'a' key to decrease z-scale
-        vars->z_scale += 0.1;
-    else if (keycode == 100) // 'd' key to increase z-scale
-        vars->z_scale -= 0.1;
+        vars->z_scale *= 1.1;
+    else if (keycode == 100 && vars->z_scale > 0.05) // 'd' key to increase z-scale
+        vars->z_scale /= 1.1;
 
    render_screen(vars);
 
@@ -528,12 +580,19 @@ int main(int argc, char **argv)
 
     // Initialize transformation parameters
     vars.img = (t_data){0};
-    vars.zoom = 20; // Set initial zoom level
-    vars.angle = 0.8; // Approximately 45 degrees in radians
+    vars.zoom = 1; // Set initial zoom level
+    vars.angle = 0; // Approximately 45 degrees in radians
     vars.z_scale = 1.0;
     vars.shift_x = 0; // Center the map
     vars.shift_y = 0;
     vars.map = &map; // Store map in vars for access in event handlers
+
+    // Calculate the initial zoom level to fit the content
+    t_point2d content_size = calculate_projection(&map, &vars, 0);
+    float zoom_x = (float)WINDOW_WIDTH / content_size.x;
+    float zoom_y = (float)WINDOW_HEIGHT / content_size.y;
+    vars.zoom = fmin(zoom_x, zoom_y); // Choose the smaller zoom to fit both dimensions
+    vars.zoom_step = vars.zoom / 10; // Set the zoom step to 10% of the initial zoom level
 
     render_screen(&vars);
 
